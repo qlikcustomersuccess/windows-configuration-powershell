@@ -1,6 +1,6 @@
 #Requires -RunAsAdministrator
 
-# MIT LICENSE - COPYRIGHT (c) 2018
+# MIT LICENSE - COPYRIGHT (c) 2020 
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -22,27 +22,29 @@
 
 # DESCRIPTION
 
-# This powershell script increases the default timeout value for the service 
-# control manager in Windows. The change is applied in the Windows registry, 
-# and requires administrator privileges. 
-# Caution is advised for any change sin Wndows registry. Make sure you have a 
-# recovery plan, in case of incorrect or accidental configuration 
+# This PowerShell script removes Fiddler2 generated certificates from Windows 
+# Certificate store. This includes both certificates in Current Users personal 
+# certificates and Trusted Root CA.
+# Prior to removal the certificates are exported to file. 
+ 
+$ScriptTime = Get-Date -Format "ddMMyyyyHHmmss"
 
-# REFERENCES
-# - Qlik Support knowledge article; https://qliksupport.force.com/articles/000003722
-# - Microsoft Support article; https://support.microsoft.com/en-us/help/839803
+# Get all cert that are issues by Fiddler
+$ClientCert = Get-ChildItem -Path "Cert:\CurrentUser\My" | `
+              Where-Object { $_.Issuer -like '*CN=DO_NOT_TRUST*'} 
+              
+# Store backup to SST file              
+$ClientCert | Export-Certificate -FilePath ".\FiddlerClientCerts$ScriptTime.sst" -Type SST
 
-$Path_CurrentControlSetControl =  "HKLM:\SYSTEM\CurrentControlSet\control"
-$Path_ServicesPipeTimeout = $Path_CurrentControlSetControl + "\ServicesPipeTimeout"
+# Remove the identified certs
+$ClientCert | Remove-Item
 
-if(-Not (Test-Path $Path_ServicesPipeTimeout)) {
+$RootCert = Get-ChildItem -Path "Cert:\CurrentUser\Root" | `
+            Where-Object { $_.Subject -like '*fiddler*'} 
 
-    Set-Location "$Path_CurrentControlSetControl" 
+# Export to CER file for bacup        
+$RootCert | ForEach-Object { Export-Certificate -Cert $_ -FilePath ".\FiddlerRootCerts_$($_.FriendlyName)_$($_.Thumbprint)_$ScriptTime.cer" -Type CERT }
 
-    New-ItemProperty -Path "$Path_CurrentControlSetControl" `
-                     -Name "ServicesPipeTimeout" `
-                     -Value "300000" `
-                     -PropertyType "DWord" `
-                     -Force
-}
+# Remove the identified certs
+$RootCert | Remove-Item
 
